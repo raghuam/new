@@ -1,0 +1,235 @@
+import { Component, OnInit, TemplateRef, ViewChild, Inject } from '@angular/core';
+import { FormBuilder, FormGroup, FormArray, FormControl, ValidatorFn } from '@angular/forms';
+import { ScrollEvent } from '@app/shared/directives/scroll.directive';
+import { Router } from '@angular/router';
+import { PaginationModel } from '@app/models/pagination.model';
+import { DatatableComponent } from '@swimlane/ngx-datatable';
+import { UserModel, UserApiResponseModel } from '@app/models/user.model';
+import { UserData } from '@app/admin/user-management/users/bucket/users.bucket';
+import { UserService } from '@app/admin/user-management/users/service/user.service';
+import { TranslateService } from '../../../../../node_modules/@ngx-translate/core';
+import { PageSizesConfig } from '@app/shared';
+import { columnGroupWidths } from '../../../../../node_modules/@swimlane/ngx-datatable/release/utils';
+import { environment } from '@env/environment';
+import { UploadService } from '@app/core/service/upload.service';
+
+
+@Component({
+  selector: 'app-users',
+  templateUrl: './users.component.html',
+  styleUrls: ['./users.component.scss']
+})
+export class UsersComponent implements OnInit {
+  form: FormGroup;
+  userTableDataLoading: boolean;
+  InfoText = this.translate.instant('Showing All Users');
+  selectedRows = <any>[];
+  userDatatableColumns: Array<{}> = [];
+  pageSizes: Array<number>;
+  pageSize: number;
+  searchBy: string;
+  language: string;
+  page: PaginationModel;
+  rowExpandDetails: any = {};
+  rowExapndId: number;
+  rowExpandNode: HTMLElement[] = [];
+  scroll: boolean;
+  rowInfo: Object;
+  selectedUser: string;
+  defaultSort = [{ prop: 'firstName', dir: 'asc' }];
+  @ViewChild('userDatatable') userDatatable: DatatableComponent;
+  @ViewChild('userTableNameTemplate') userTableNameTemplate: TemplateRef<any>;
+  @ViewChild('userTableEmpIdTemplate') userTableEmpIdTemplate: TemplateRef<any>;
+  @ViewChild('userTableOrgRoleTemplate') userTableOrgRoleTemplate: TemplateRef<any>;
+  @ViewChild('userTableDepartmentTemplate') userTableDepartmentTemplate: TemplateRef<any>;
+  @ViewChild('userTableSysRoleTemplate') userTableSysRoleTemplate: TemplateRef<any>;
+  @ViewChild('userTableAssignmentsTemplate') userTableAssignmentsTemplate: TemplateRef<any>;
+  @ViewChild("userTableNameHeaderTemplate") userTableNameHeaderTemplate: TemplateRef<any>;
+  users: Array<UserModel>;
+  pagination: PaginationModel;
+  assetsPath: string;
+  statusFilterItems = [
+    { isSelected: false, statusKey: 'all', statusValue: 'all', statusName: this.translate.instant("All Users") },
+    { isSelected: false, statusKey: 'isActive', statusValue: 'true', statusName: this.translate.instant("Active Users") },
+    { isSelected: false, statusKey: 'isVerified', statusValue: 'false', statusName: this.translate.instant("Pending Activation") },
+    { isSelected: false, statusKey: 'isActive', statusValue: 'false', statusName: this.translate.instant("Inactive Users") }
+  ];
+  tableFilter: Array<any> = [];
+  constructor(
+    private translate: TranslateService,
+    private uploadService: UploadService,
+    private userService: UserService,
+    private userData: UserData,
+    private pageSizesConfig: PageSizesConfig,
+    private formBuilder: FormBuilder,
+    @Inject('WIN') private window: Window
+  ) {  }
+
+  ngOnInit() {
+    this.window.scrollTo(0, 0);
+    this.getUserDatatableColumns();
+    this.pagination = this.userData.pagination;
+    this.pagination.pageSize = this.pageSizesConfig.data[0] || 0;
+    this.onSortByAction(this.getDefaultSort());
+    this.assetsPath = environment.assetsPath;
+  }
+
+  private getUserlist(sortBy?: string) {
+    this.tableFilter = [];
+    for (var i =1; i < this.statusFilterItems.length; i++) {
+      if(this.statusFilterItems[i].isSelected) {
+        this.tableFilter.push({
+          department : this.statusFilterItems[i].statusValue
+        });
+      }
+    }
+   // console.log( this.tableFilter);
+    this.userTableDataLoading = true;
+    this.userService.getUserlist(this.searchBy, sortBy, this.tableFilter).subscribe((response: UserApiResponseModel) => {
+      this.userTableDataLoading = false;
+      this.users = response.data.users;
+      this.pagination = response.data._pagination;
+    });
+  }
+
+  updateUserlist(sortBy: string) {
+    this.getUserlist(sortBy);
+  }
+
+  searchAction(event: string) {
+    const filter = event;
+    this.searchBy = filter;
+    this.userData.pagination.pageNumber = 0;
+    this.getUserlist();
+  }
+
+  pageAction(pagination: PaginationModel) {
+    this.userData.pagination = this.pagination;
+    this.getUserlist();
+  }
+
+  onSortByAction(event: { sorts: any, column: any, prevValue: any, newValue: any }) {
+    const sort = event.column.prop + ',' + event.newValue;
+    this.userData.pagination.pageNumber = 0;
+    this.getUserlist(sort);
+  }
+
+  private getDefaultSort() {
+    return {
+      sorts: '',
+      column: {
+        prop: this.defaultSort[0].prop
+      },
+      prevValue: '',
+      newValue: this.defaultSort[0].dir
+    };
+  }
+
+  columnFilter(event: any, index: any) {
+    const selectedValue = event.target.value;
+    if (selectedValue === 'all') {
+      for (var i = 0; i < this.statusFilterItems.length; i++) {
+        this.statusFilterItems[i].isSelected = event.target.checked;
+      }
+    } else {
+      this.statusFilterItems[0].isSelected = false;
+      this.statusFilterItems[index].isSelected = event.target.checked;
+      // check all
+      const trueArray = this.statusFilterItems.filter( (ele) => {
+        return ele.statusValue != 'all' && ele.isSelected === true;
+      });
+      if(trueArray.length === (this.statusFilterItems.length - 1)) {
+        this.statusFilterItems[0].isSelected = true;
+      }
+    }
+    this.getUserlist();
+  }
+
+  private getUserDatatableColumns() {
+    const columns = [];
+    const empidCol = {
+      name: this.translate.instant('empid'),
+      prop: 'employeeCode',
+      lockCol: true,
+      maxWidth: 100,
+      sortable: true,
+      cellTemplate: this.userTableEmpIdTemplate
+    };
+    const nameCol = {
+      name: this.translate.instant('Name'),
+      prop: 'firstName',
+      lockCol: true,
+      minWidth: 100,
+      sortable: true,
+      cellTemplate: this.userTableNameTemplate,
+      headerTemplate: this.userTableNameHeaderTemplate
+    };
+    const orgRolelCol = {
+      name: this.translate.instant('org. Role'),
+      prop: 'designation',
+      lockCol: false,
+      minWidth: 100,
+      sortable: true,
+      cellTemplate: this.userTableOrgRoleTemplate
+    };
+    const departmentCol = {
+      name: this.translate.instant('Department'),
+      prop: 'department',
+      lockCol: false,
+      minWidth: 100,
+      sortable: true,
+      cellTemplate: this.userTableDepartmentTemplate
+    };
+    const sysRoleCol = {
+      name: this.translate.instant('Sys. Role'),
+      prop: 'userTypeName',
+      lockCol: false,
+      minWidth: 100,
+      sortable: true,
+      cellTemplate: this.userTableSysRoleTemplate
+    };
+    const assignmentsCol = {
+      name: this.translate.instant('Assignments'),
+      prop: 'assignmentCount',
+      lockCol: false,
+      minWidth: 150,
+      sortable: true,
+      cellTemplate: this.userTableAssignmentsTemplate
+    };
+    columns.push({
+      headerCheckboxable: true,
+      checkboxable: true,
+      width: 60,
+      sortable: false,
+      canAutoResize: false,
+      resizeable: false,
+      draggable: false
+    });
+    columns.push(empidCol);
+    columns.push(nameCol);
+    columns.push(orgRolelCol);
+    columns.push(departmentCol);
+    columns.push(sysRoleCol);
+    columns.push(assignmentsCol);
+    this.userDatatableColumns = columns;
+  }
+
+  public handleScroll(event: ScrollEvent) {
+    this.scroll = event.isTopScrolled;
+  }
+
+  private getTabData(id: string) {
+    this.userService.getUserDetails(id);
+  }
+
+  onRowClick(event: any) {
+    if (event.type === 'click') {
+      event.cellElement.blur();
+      this.userService.userDetailsWindowAction.next({ type: 'show', id: event.row.id });
+    }
+  }
+
+  addNewUser() {
+    this.uploadService.uploadUserEvt.next(true);
+  }
+}
