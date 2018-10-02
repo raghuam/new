@@ -1,0 +1,78 @@
+import { Injectable } from '@angular/core';
+import { HttpClient, HttpParams } from '@angular/common/http';
+import { Observable, of } from 'rxjs';
+import { map, catchError } from 'rxjs/operators';
+import { Subject } from 'rxjs/Subject';
+
+import { environment } from '@env/environment';
+import { UserData } from '@app/admin/user-management/users/bucket/users.bucket';
+
+@Injectable()
+export class UserService {
+  userDetailsWindowAction = new Subject<any>();
+  constructor(
+    private http: HttpClient,
+    private userData: UserData
+  ) { }
+      
+  // getHttpParams = (params: Array<any>): HttpParams => {
+  //   let res = new HttpParams();
+  //   for (const item of params) {
+  //     res = res.append(item.key, item.value);
+  //   }
+  //   return res;
+  // }
+  
+  getUserlist(filter: any, colSortBy: string,  tableFilter:any ): Observable<any> {
+    let params = new HttpParams();
+    for (var i =0; i < tableFilter.length; i++) {
+      const obj = tableFilter[i];
+      const key =  Object.keys(obj)[0];
+      params = params.append(key, obj[key]);
+    }
+    params['page-number'] = this.userData.pagination.pageNumber.toString();
+    params['page-size'] = this.userData.pagination.pageSize.toString();
+    if (filter) {
+      params['query'] = filter;
+    }
+    if (colSortBy) {
+      params['order-by'] = colSortBy;
+    }
+    
+    return this.http.get(environment.apiEndPoint.users, { params: params })
+      .pipe(
+        map((res: Response) => res),
+        map(body => body),
+        catchError((body) => of(body))
+      );
+  }
+  
+  getUserDetails(userId: string): Observable<any> {
+    const url = `${environment.apiEndPoint.users}/${userId}?userGroupData=true`;
+    return this.http.get( url)
+      .pipe(
+        map((res: Response) => res),
+        map(body => body),
+        catchError((body) => of(body))
+      );
+  }
+  postUpdateUserDetails(userId: string , context: any): Observable<any> {
+    const url = `${environment.apiEndPoint.users}/${userId}`;
+    return this.http.put(url , context)
+      .pipe(
+        map((res: Response) => res),
+        map(body => body),
+        catchError((body) => of(body))
+      );
+  }
+  getUserMetaData(metaDataType: string): Observable<any> {
+    const url = `${environment.apiEndPoint.userMetaValues}?meta=${metaDataType}` ;
+    return this.http.get( url)
+      .pipe(
+        map((res: Response) => res),
+        map(body => body),
+        catchError((body) => of(body))
+      );
+  }
+
+}
